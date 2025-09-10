@@ -1,0 +1,45 @@
+#!/usr/bin/env python3
+"""Launch the enhanced Music Analyzer Pro UI with HAMMS v3.0 and OpenAI integration"""
+
+import sys
+import os
+from pathlib import Path
+
+# Add src directory to Python path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+# Set environment variable for Qt
+os.environ['QT_MAC_WANTS_LAYER'] = '1'
+
+def main():
+    """Launch the enhanced UI"""
+    try:
+        from PyQt6.QtWidgets import QApplication
+        from src.ui.enhanced_main_window import create_enhanced_window
+        
+        # Create Qt application
+        app = QApplication(sys.argv)
+        app.setApplicationName("Music Analyzer Pro Enhanced")
+        app.setOrganizationName("HAMMS Labs")
+        
+        # Create and show main window
+        window = create_enhanced_window()
+        window.show()
+        
+        # Run application
+        sys.exit(app.exec())
+        
+    except ImportError as e:
+        print(f"Failed to import required modules: {e}")
+        print("Make sure PyQt6 and all dependencies are installed.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Failed to launch enhanced UI: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

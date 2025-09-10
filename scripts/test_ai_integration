@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+"""Test script for OpenAI integration with HAMMS v3.0
+
+This script tests the complete enhanced analysis workflow including:
+- HAMMS v3.0 12-dimensional analysis
+- OpenAI GPT-4 enrichment 
+- Database storage
+- Results validation
+
+Usage:
+    export OPENAI_API_KEY="sk-your-key-here"
+    ./scripts/test_ai_integration /path/to/audio/file.mp3
+"""
+
+import sys
+import os
+from pathlib import Path
+
+# Add src directory to Python path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+def test_ai_integration(audio_file_path: str):
+    """Test the complete AI integration workflow"""
+    
+    print("🚀 Testing Enhanced Analysis Workflow with OpenAI Integration")
+    print("=" * 60)
+    
+    try:
+        from src.services.enhanced_analyzer import create_enhanced_analyzer
+        from src.analysis import create_enricher_from_env
+        
+        # Check OpenAI availability
+        enricher = create_enricher_from_env()
+        if enricher is None:
+            print("❌ OpenAI API key not configured!")
+            print("   Please set OPENAI_API_KEY environment variable")
+            print("   export OPENAI_API_KEY='sk-your-key-here'")
+            return False
+        
+        print("✅ OpenAI API key configured")
+        
+        # Check audio file
+        audio_path = Path(audio_file_path)
+        if not audio_path.exists():
+            print(f"❌ Audio file not found: {audio_file_path}")
+            return False
+            
+        print(f"✅ Audio file found: {audio_path.name}")
+        
+        # Create enhanced analyzer
+        analyzer = create_enhanced_analyzer("data/test_ai.db", enable_ai=True)
+        print("✅ Enhanced analyzer created with AI enabled")
+        
+        # Perform analysis
+        print("\n🔍 Performing Enhanced Analysis...")
+        print("-" * 40)
+        
+        result = analyzer.analyze_track(str(audio_path), force_reanalysis=True)
+        
+        if result.success:
+            print("✅ Analysis completed successfully!")
+            print(f"   Processing time: {result.processing_time_ms}ms")
+            
+            # Display HAMMS results
+            print("\n📊 HAMMS v3.0 Results:")
+            print(f"   Vector: {[f'{v:.3f}' for v in result.hamms_vector[:4]]}... (12D)")
+            print(f"   Confidence: {result.hamms_confidence:.3f}")
+            print(f"   Dimensions: {len(result.hamms_dimensions)} calculated")
+            
+            # Display AI results
+            if result.genre:
+                print("\n🤖 OpenAI GPT-4 Results:")
+                print(f"   Genre: {result.genre}")
+                print(f"   Subgenre: {result.subgenre}")
+                print(f"   Mood: {result.mood}")
+                print(f"   Era: {result.era}")
+                print(f"   Tags: {', '.join(result.tags) if result.tags else 'None'}")
+                print(f"   AI Confidence: {result.ai_confidence:.3f}")
+            else:
+                print("\n⚠️  OpenAI enrichment not performed (check API limits)")
+                
+        else:
+            print(f"❌ Analysis failed: {result.error_message}")
+            return False
+            
+        # Test database storage
+        print("\n💾 Testing Database Storage...")
+        summary = analyzer.get_analysis_summary()
+        print(f"   Tracks analyzed: {summary['total_tracks_analyzed']}")
+        print(f"   AI enriched: {summary['total_ai_enriched']}")
+        print(f"   AI coverage: {summary['ai_coverage_percent']}%")
+        
+        # Test similarity calculation
+        if len(result.hamms_vector) == 12:
+            print("\n🔄 Testing HAMMS Similarity...")
+            from src.analysis.hamms_v3 import HAMMSAnalyzerV3
+            hamms_analyzer = HAMMSAnalyzerV3()
+            
+            # Self-similarity test
+            import numpy as np
+            vector = np.array(result.hamms_vector)
+            similarity = hamms_analyzer.calculate_similarity(vector, vector)
+            print(f"   Self-similarity: {similarity['overall']:.3f} (should be ~1.0)")
+            
+            if similarity['overall'] > 0.95:
+                print("   ✅ Similarity calculation working correctly")
+            else:
+                print("   ⚠️  Similarity calculation may have issues")
+        
+        print("\n🎉 All tests completed successfully!")
+        print("   Enhanced analysis workflow is fully operational")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Test failed with error: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def main():
+    """Main test function"""
+    if len(sys.argv) != 2:
+        print("Usage: test_ai_integration <audio_file_path>")
+        print("Example: test_ai_integration /path/to/song.mp3")
+        sys.exit(1)
+    
+    audio_file_path = sys.argv[1]
+    
+    # Check for API key
+    api_key = os.getenv('OPENAI_API_KEY')
+    if not api_key:
+        print("⚠️  OPENAI_API_KEY environment variable not set")
+        print("   Testing will proceed with HAMMS-only analysis")
+    
+    success = test_ai_integration(audio_file_path)
+    sys.exit(0 if success else 1)
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [ -x "$ROOT/.venv/bin/python" ]; then
+  PY="$ROOT/.venv/bin/python"
+elif [ -x "$ROOT/spec-kit/.venv/bin/python" ]; then
+  PY="$ROOT/spec-kit/.venv/bin/python"
+else
+  PY="${PYTHON:-python3}"
+fi
+
+cd "$ROOT"
+exec "$PY" -m src.ui.main_window "$@"
+
