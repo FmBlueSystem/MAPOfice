@@ -124,6 +124,15 @@ class AIAnalysis(Base):
         analysis.set_openai_response_data(response_data)
         
         return analysis
+    
+    @classmethod 
+    def from_llm_response(cls, track_id: int, response_data: Dict[str, Any], 
+                         processing_time_ms: Optional[int] = None) -> 'AIAnalysis':
+        """Create AIAnalysis instance from LLM API response
+        
+        Alias for from_openai_response to support multi-LLM architecture.
+        """
+        return cls.from_openai_response(track_id, response_data, processing_time_ms)
 
 
 class TrackORM(Base):

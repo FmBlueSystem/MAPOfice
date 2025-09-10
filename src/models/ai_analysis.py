@@ -1,6 +1,6 @@
 """AI Analysis Database Model
 
-This module defines the database model for storing OpenAI GPT-4 analysis results.
+This module defines the database model for storing Multi-LLM analysis results.
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from src.services.storage import Base
 
 
 class AIAnalysis(Base):
-    """Database model for OpenAI GPT-4 analysis results"""
+    """Database model for Multi-LLM analysis results"""
     
     __tablename__ = "ai_analysis"
     
@@ -36,7 +36,7 @@ class AIAnalysis(Base):
     # AI metadata
     ai_confidence = Column(Float)        # Overall AI confidence (0-1)
     ai_model = Column(String(50), default="gpt-4")  # AI model used
-    openai_response = Column(Text)       # Full OpenAI response for debugging
+    openai_response = Column(Text)       # Full LLM response for debugging (keeping column name for compatibility)
     
     # Processing metadata
     analysis_date = Column(DateTime, default=datetime.utcnow)
@@ -141,6 +141,15 @@ class AIAnalysis(Base):
         analysis.set_openai_response_data(response_data)
         
         return analysis
+    
+    @classmethod 
+    def from_llm_response(cls, track_id: int, response_data: Dict[str, Any], 
+                         processing_time_ms: Optional[int] = None) -> 'AIAnalysis':
+        """Create AIAnalysis instance from LLM API response
+        
+        Alias for from_openai_response to support multi-LLM architecture.
+        """
+        return cls.from_openai_response(track_id, response_data, processing_time_ms)
     
     def validate_data(self) -> bool:
         """Validate that AI analysis data is correct"""

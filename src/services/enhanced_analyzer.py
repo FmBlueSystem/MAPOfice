@@ -1,6 +1,6 @@
 """Enhanced Music Analysis Service
 
-This service combines HAMMS v3.0 analysis with OpenAI GPT-4 enrichment
+This service combines HAMMS v3.0 analysis with Multi-LLM enrichment
 to provide comprehensive music analysis including both technical and semantic metadata.
 
 POML Quality Gates:
@@ -62,7 +62,7 @@ class EnhancedAnalysisResult:
 
 
 class EnhancedAnalyzer:
-    """Enhanced music analyzer combining HAMMS v3.0 and OpenAI enrichment
+    """Enhanced music analyzer combining HAMMS v3.0 and Multi-LLM enrichment
     
     This service provides a complete music analysis pipeline that:
     1. Extracts basic audio features (BPM, key, energy)
@@ -76,7 +76,7 @@ class EnhancedAnalyzer:
         
         Args:
             storage: Database storage instance
-            enable_ai: Whether to enable OpenAI enrichment
+            enable_ai: Whether to enable Multi-LLM enrichment
         """
         self.storage = storage
         self.hamms_analyzer = HAMMSAnalyzerV3()
@@ -106,27 +106,47 @@ class EnhancedAnalyzer:
     
     def _get_track_metadata(self, track_path: str) -> Dict[str, Any]:
         """Get basic track metadata from database"""
+        db_title = None
+        db_artist = None
+        db_album = None
+        db_bpm = None
+        db_key = None
+        
         try:
             track_data = self.storage.get_analysis_by_path(track_path)
             if track_data:
-                return {
-                    'title': track_data.get('title'),
-                    'artist': track_data.get('artist'),
-                    'album': track_data.get('album'),
-                    'bpm': track_data.get('bpm'),
-                    'key': track_data.get('key')
-                }
+                db_title = track_data.get('title')
+                db_artist = track_data.get('artist')
+                db_album = track_data.get('album')
+                db_bpm = track_data.get('bpm')
+                db_key = track_data.get('key')
         except:
             pass
         
         # Fallback to extracting metadata directly from file
         metadata = self._extract_file_metadata(track_path)
+        
+        # Enhanced fallback: extract from filename if no metadata found
+        filename = Path(track_path).stem
+        title = metadata.get('title')
+        artist = metadata.get('artist')
+        
+        # Try to parse "Artist - Title" format from filename
+        if not artist or not title:
+            if ' - ' in filename:
+                parts = filename.split(' - ', 1)
+                if len(parts) == 2:
+                    if not artist:
+                        artist = parts[0].strip()
+                    if not title:
+                        title = parts[1].strip()
+        
         return {
-            'title': metadata.get('title') or Path(track_path).stem,
-            'artist': metadata.get('artist') or "Unknown Artist",
-            'album': metadata.get('album') or "Unknown Album",
-            'bpm': metadata.get('bpm'),
-            'key': metadata.get('key')
+            'title': db_title or title or filename,
+            'artist': db_artist or artist or "Unknown Artist", 
+            'album': db_album or metadata.get('album') or "Unknown Album",
+            'bpm': db_bpm or metadata.get('bpm'),
+            'key': db_key or metadata.get('key')
         }
     
     def _extract_file_metadata(self, track_path: str) -> Dict[str, Any]:
@@ -182,12 +202,14 @@ class EnhancedAnalyzer:
             print(f"⚠️ Error extracting metadata from {track_path}: {e}")
             return {}
     
-    def analyze_track(self, track_path: str, force_reanalysis: bool = False) -> EnhancedAnalysisResult:
+    def analyze_track(self, track_path: str, force_reanalysis: bool = False, 
+                     llm_progress_callback: Optional[callable] = None) -> EnhancedAnalysisResult:
         """Perform complete analysis on a single track
         
         Args:
             track_path: Path to the audio file
             force_reanalysis: Whether to force re-analysis even if cached results exist
+            llm_progress_callback: Optional callback for LLM progress updates
             
         Returns:
             Complete analysis results
@@ -450,7 +472,7 @@ class EnhancedAnalyzer:
                     }
                     
                     # Create AI analysis record
-                    ai_record = AIAnalysis.from_openai_response(
+                    ai_record = AIAnalysis.from_llm_response(
                         track_id=track.id,
                         response_data=ai_response_data,
                         processing_time_ms=result.processing_time_ms

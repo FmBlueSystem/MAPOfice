@@ -1,8 +1,8 @@
-"""Enhanced PyQt6 UI with HAMMS v3.0 and OpenAI Integration
+"""Enhanced PyQt6 UI with HAMMS v3.0 and Multi-LLM Integration
 
 This enhanced main window extends the original with:
 - HAMMS v3.0 12-dimensional analysis
-- OpenAI GPT-4 enrichment integration  
+- Multi-LLM enrichment integration (Z.ai, Gemini, OpenAI)  
 - Interactive HAMMS radar chart visualization
 - Enhanced analysis workflow with both basic and advanced modes
 
@@ -53,7 +53,7 @@ from src.services.analyzer import Analyzer
 class EnhancedAnalysisSettings:
     """Settings for enhanced analysis"""
     enable_hamms_v3: bool = True
-    enable_openai: bool = True
+    enable_ai: bool = True
     force_reanalysis: bool = False
     batch_size: int = 5
     show_radar_chart: bool = True
@@ -66,6 +66,7 @@ class EnhancedAnalyzeWorker(QThread):
     log = pyqtSignal(str)
     done = pyqtSignal(list)  # List[EnhancedAnalysisResult]
     track_analyzed = pyqtSignal(str, dict)  # track_path, analysis_data
+    llm_progress = pyqtSignal(str, str, str)  # track_path, provider, status
     error = pyqtSignal(str)
     
     def __init__(self, track_paths: List[str], analyzer: EnhancedAnalyzer, 
@@ -126,11 +127,11 @@ class EnhancedAnalyzeWorker(QThread):
 
 
 class EnhancedMainWindow(QMainWindow):
-    """Enhanced main window with HAMMS v3.0 and OpenAI integration
+    """Enhanced main window with HAMMS v3.0 and Multi-LLM integration
     
     This window provides a complete music analysis interface with:
     - Legacy mode (original analysis workflow)
-    - Enhanced mode (HAMMS v3.0 + OpenAI enrichment)
+    - Enhanced mode (HAMMS v3.0 + Multi-LLM enrichment)
     - Interactive HAMMS radar chart visualization
     - Side-by-side track comparison
     - Enhanced progress tracking and logging
@@ -150,7 +151,7 @@ class EnhancedMainWindow(QMainWindow):
         self.enhanced_analyzer = EnhancedAnalyzer(self.storage, enable_ai=True)
         self.analyzer = Analyzer(self.storage)
         self.library_analyzer = LibraryAnalyzer(self.storage)
-        self.openai_available = create_enricher_from_env() is not None
+        self.ai_available = create_enricher_from_env() is not None
         
         # State
         self.worker: Optional[EnhancedAnalyzeWorker] = None
@@ -238,7 +239,7 @@ class EnhancedMainWindow(QMainWindow):
         # Status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("Ready - HAMMS v3.0 + OpenAI Integration")
+        self.status_bar.showMessage("Ready - HAMMS v3.0 + Multi-LLM Integration")
         
     def _create_header(self) -> QFrame:
         """Create header with service status indicators"""
@@ -272,8 +273,8 @@ class EnhancedMainWindow(QMainWindow):
         self.hamms_status.setStyleSheet("color: #000000; font-weight: bold; background-color: #ffffff; font-size: 10px; padding: 1px 3px;")
         status_layout.addWidget(self.hamms_status)
         
-        # OpenAI status - compact
-        self.ai_status = QLabel("✗ OpenAI" if not self.openai_available else "✓ OpenAI")
+        # AI LLM status - compact
+        self.ai_status = QLabel("✗ AI LLM" if not self.ai_available else "✓ AI LLM")
         self.ai_status.setStyleSheet("color: #000000; font-weight: bold; background-color: #ffffff; font-size: 10px; padding: 1px 3px;")
         status_layout.addWidget(self.ai_status)
         
@@ -408,9 +409,9 @@ class EnhancedMainWindow(QMainWindow):
         """)
         settings_row1.addWidget(self.hamms_checkbox)
         
-        self.ai_checkbox = QCheckBox("🤖 Enable OpenAI Enrichment") 
-        self.ai_checkbox.setChecked(self.openai_available)
-        self.ai_checkbox.setEnabled(self.openai_available)
+        self.ai_checkbox = QCheckBox("🤖 Enable AI Enrichment") 
+        self.ai_checkbox.setChecked(self.ai_available)
+        self.ai_checkbox.setEnabled(self.ai_available)
         self.ai_checkbox.setToolTip("AI-powered genre, mood, and tag analysis")
         self.ai_checkbox.setStyleSheet(self.hamms_checkbox.styleSheet())
         settings_row1.addWidget(self.ai_checkbox)
@@ -439,7 +440,7 @@ class EnhancedMainWindow(QMainWindow):
         controls_layout.setContentsMargins(2, 2, 2, 2)
         
         self.start_btn = QPushButton("🚀 Start Enhanced Analysis")
-        self.start_btn.setToolTip("Begin HAMMS v3.0 + OpenAI analysis of selected directory (Ctrl+R)")
+        self.start_btn.setToolTip("Begin HAMMS v3.0 + Multi-LLM analysis of selected directory (Ctrl+R)")
         self.start_btn.setShortcut("Ctrl+R")
         self.start_btn.setMinimumWidth(150)
         self.start_btn.setStyleSheet("""
@@ -547,6 +548,11 @@ class EnhancedMainWindow(QMainWindow):
         
         self.progress_label = QLabel("Ready to analyze...")
         progress_layout.addWidget(self.progress_label)
+        
+        # LLM status label
+        self.llm_status_label = QLabel("")
+        self.llm_status_label.setStyleSheet("color: #666; font-style: italic; font-size: 10px;")
+        progress_layout.addWidget(self.llm_status_label)
         
         layout.addWidget(progress_group)
         
@@ -738,10 +744,10 @@ class EnhancedMainWindow(QMainWindow):
     def _check_services(self):
         """Check availability of analysis services"""
         # This is already done in __init__, just update UI if needed
-        if not self.openai_available:
-            self.log_output.append("⚠️ OpenAI API key not configured - AI enrichment disabled")
+        if not self.ai_available:
+            self.log_output.append("⚠️ No LLM providers configured - AI enrichment disabled")
         else:
-            self.log_output.append("✓ OpenAI integration ready")
+            self.log_output.append("✓ Multi-LLM integration ready")
             
         self.log_output.append("✓ HAMMS v3.0 analyzer ready")
         
@@ -817,6 +823,7 @@ class EnhancedMainWindow(QMainWindow):
         self.worker.log.connect(self._on_log)
         self.worker.done.connect(self._on_analysis_done)
         self.worker.track_analyzed.connect(self._on_track_analyzed)
+        self.worker.llm_progress.connect(self._on_llm_progress)
         self.worker.error.connect(self._on_error)
         
         # Update UI state
@@ -835,7 +842,7 @@ class EnhancedMainWindow(QMainWindow):
     def _update_settings(self):
         """Update analysis settings from UI"""
         self.settings.enable_hamms_v3 = self.hamms_checkbox.isChecked()
-        self.settings.enable_openai = self.ai_checkbox.isChecked() and self.openai_available
+        self.settings.enable_ai = self.ai_checkbox.isChecked() and self.ai_available
         self.settings.force_reanalysis = self.force_checkbox.isChecked()
         
     def _on_progress(self, current: int, total: int):
@@ -869,6 +876,18 @@ class EnhancedMainWindow(QMainWindow):
                 )
             except Exception as e:
                 self.log_output.append(f"⚠️ Failed to update visualization: {e}")
+                
+    def _on_llm_progress(self, track_path: str, provider: str, status: str):
+        """Handle LLM progress updates"""
+        filename = Path(track_path).name
+        if status == "analyzing":
+            self.llm_status_label.setText(f"🤖 AI enriching {filename} with {provider.title()}...")
+        elif status == "success":
+            self.llm_status_label.setText(f"✅ {filename} enriched with {provider.title()}")
+        elif status == "failed":
+            self.llm_status_label.setText(f"⚠️ {provider.title()} failed, trying fallback...")
+        elif status == "complete":
+            self.llm_status_label.setText("")
                 
     def _on_analysis_done(self, results: List[EnhancedAnalysisResult]):
         """Handle analysis completion"""
@@ -1009,6 +1028,7 @@ class EnhancedMainWindow(QMainWindow):
         self.log_output.clear()
         self.progress_bar.setValue(0)
         self.progress_label.setText("Ready to analyze...")
+        self.llm_status_label.setText("")
         
         # Reset button states
         self.export_btn.setEnabled(False)
