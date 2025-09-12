@@ -1,0 +1,54 @@
+#!/bin/bash
+# Music Analyzer Pro - CLI Wrapper Script
+# 
+# Usage: ./analyze /path/to/music [options]
+#
+# This script automatically activates the virtual environment
+# and runs the Music Analyzer Pro CLI tool.
+
+set -e
+
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# Check if virtual environment exists
+if [ ! -d ".venv" ]; then
+    echo "❌ Virtual environment not found!"
+    echo "Run: python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt"
+    exit 1
+fi
+
+# Activate virtual environment
+echo "🔧 Activating virtual environment..."
+source .venv/bin/activate
+
+# Check if folder argument is provided
+if [ $# -eq 0 ]; then
+    echo "🎵 Music Analyzer Pro - CLI Version"
+    echo "Usage: $0 /path/to/music/folder [options]"
+    echo ""
+    echo "Examples:"
+    echo "  $0 \"/Users/music/collection\""
+    echo "  $0 \"/Users/music/collection\" --export results.csv"
+    echo "  $0 \"/Users/music/collection\" --formats mp3,flac --quiet"
+    echo ""
+    echo "For full help: $0 --help"
+    exit 1
+fi
+
+# Show help if requested
+if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+    python simple_cli.py --help
+    exit 0
+fi
+
+# Run the CLI analyzer with all arguments
+echo "🚀 Starting Music Analyzer Pro CLI..."
+echo "📁 Target folder: $1"
+echo ""
+
+python simple_cli.py "$@"
+
+echo ""
+echo "✅ Analysis complete!"

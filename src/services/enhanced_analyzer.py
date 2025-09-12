@@ -26,6 +26,21 @@ from src.models.hamms_advanced import HAMMSAdvanced
 from src.services.storage import AIAnalysis
 
 
+class AudioValidationError(Exception):
+    """Exception raised when audio file fails mandatory validation requirements"""
+    def __init__(self, message: str, missing_fields: List[str]):
+        super().__init__(message)
+        self.missing_fields = missing_fields
+
+
+@dataclass 
+class ValidationResult:
+    """Result of audio file validation"""
+    valid: bool
+    missing_fields: List[str]
+    error_message: Optional[str] = None
+
+
 @dataclass
 class EnhancedAnalysisResult:
     """Complete analysis result combining HAMMS and AI analysis"""
@@ -38,6 +53,7 @@ class EnhancedAnalysisResult:
     album: Optional[str] = None
     bpm: Optional[float] = None
     key: Optional[str] = None
+    energy: Optional[float] = None
     
     # HAMMS v3.0 results
     hamms_vector: List[float] = None
@@ -71,22 +87,24 @@ class EnhancedAnalyzer:
     4. Stores all results in the database with proper relationships
     """
     
-    def __init__(self, storage: Storage, enable_ai: bool = True):
+    def __init__(self, storage: Storage, enable_ai: bool = True, skip_validation: bool = False):
         """Initialize the enhanced analyzer
         
         Args:
             storage: Database storage instance
             enable_ai: Whether to enable Multi-LLM enrichment
+            skip_validation: Whether to skip mandatory audio file validation (for UI compatibility)
         """
         self.storage = storage
         self.hamms_analyzer = HAMMSAnalyzerV3()
         self.enable_ai = enable_ai
+        self.skip_validation = skip_validation
         
         # Initialize Multi-LLM enricher if available and requested
         self.ai_enricher = None
         if enable_ai:
             # Get preferred provider from environment or use default
-            preferred_provider = os.getenv('LLM_PROVIDER', 'gemini')
+            preferred_provider = os.getenv('LLM_PROVIDER', 'anthropic')
             
             self.ai_enricher = MultiLLMEnricher(preferred_provider=preferred_provider)
             
@@ -103,6 +121,54 @@ class EnhancedAnalyzer:
                 print("💰 Cost estimates per 1M tokens:")
                 for provider, costs in estimates.items():
                     print(f"  {provider.title()}: ${costs['input_cost_per_1M']:.3f} input / ${costs['output_cost_per_1M']:.3f} output")
+    
+    def validate_audio_requirements(self, track_path: str, metadata: Dict[str, Any]) -> ValidationResult:
+        """Validate that audio file meets mandatory requirements
+        
+        Mandatory requirements:
+        - BPM (tempo): Must be present and > 0
+        - Key: Must be present and not empty
+        - Energy: Must be present and between 0-1
+        - Comments: Must be present (any non-empty string)
+        
+        Args:
+            track_path: Path to audio file
+            metadata: Extracted metadata from file
+            
+        Returns:
+            ValidationResult with validation status and missing fields
+        """
+        missing_fields = []
+        
+        # Check BPM requirement
+        bpm = metadata.get('bpm')
+        if not bpm or (isinstance(bpm, (int, float)) and bpm <= 0):
+            missing_fields.append('BPM')
+        
+        # Check Key requirement  
+        key = metadata.get('key')
+        if not key or (isinstance(key, str) and key.strip() == ""):
+            missing_fields.append('Key')
+        
+        # Check Energy requirement
+        energy = metadata.get('energy') 
+        if energy is None or not isinstance(energy, (int, float)) or not (0 <= energy <= 1):
+            missing_fields.append('Energy')
+            
+        # Check Comments requirement
+        comments = metadata.get('comments') or metadata.get('comment')
+        if not comments or (isinstance(comments, str) and comments.strip() == ""):
+            missing_fields.append('Comments')
+        
+        if missing_fields:
+            error_msg = f"Audio file '{Path(track_path).name}' is missing mandatory metadata: {', '.join(missing_fields)}"
+            return ValidationResult(
+                valid=False,
+                missing_fields=missing_fields,
+                error_message=error_msg
+            )
+        
+        return ValidationResult(valid=True, missing_fields=[])
     
     def _get_track_metadata(self, track_path: str) -> Dict[str, Any]:
         """Get basic track metadata from database"""
@@ -146,57 +212,41 @@ class EnhancedAnalyzer:
             'artist': db_artist or artist or "Unknown Artist", 
             'album': db_album or metadata.get('album') or "Unknown Album",
             'bpm': db_bpm or metadata.get('bpm'),
-            'key': db_key or metadata.get('key')
+            'key': db_key or metadata.get('key'),
+            'energy': metadata.get('energy'),
+            'comments': metadata.get('comments')
         }
     
     def _extract_file_metadata(self, track_path: str) -> Dict[str, Any]:
-        """Extract basic metadata directly from audio file using mutagen
+        """Extract complete metadata using our audio_processing module
         
         Args:
             track_path: Path to the audio file
             
         Returns:
-            Dictionary with title, artist, album metadata
+            Dictionary with title, artist, album, bmp, key, energy, comments metadata
         """
         try:
-            import mutagen
+            # Use our proven audio_processing module
+            from src.lib import audio_processing
             
-            audio_file = mutagen.File(track_path)
-            if not audio_file:
-                return {}
-                
-            metadata = {}
+            result = audio_processing.analyze_track(track_path)
             
-            # Common tag mappings for different formats
-            title_tags = ['TIT2', 'TITLE', '\xa9nam']  # ID3, Vorbis, MP4
-            artist_tags = ['TPE1', 'ARTIST', '\xa9ART']  # ID3, Vorbis, MP4  
-            album_tags = ['TALB', 'ALBUM', '\xa9alb']   # ID3, Vorbis, MP4
+            # Extract metadata from audio_processing result
+            metadata = {
+                'title': result.get('title'),
+                'artist': result.get('artist'), 
+                'album': result.get('album'),
+                'bpm': result.get('bpm'),
+                'key': result.get('key'),
+                'energy': result.get('energy'),
+                'comments': None  # Not provided by audio_processing
+            }
             
-            # Extract title
-            for tag in title_tags:
-                if tag in audio_file:
-                    value = audio_file[tag]
-                    metadata['title'] = str(value[0]) if isinstance(value, list) else str(value)
-                    break
-                    
-            # Extract artist
-            for tag in artist_tags:
-                if tag in audio_file:
-                    value = audio_file[tag]
-                    metadata['artist'] = str(value[0]) if isinstance(value, list) else str(value)
-                    break
-                    
-            # Extract album
-            for tag in album_tags:
-                if tag in audio_file:
-                    value = audio_file[tag]
-                    metadata['album'] = str(value[0]) if isinstance(value, list) else str(value)
-                    break
-                    
             return metadata
             
         except ImportError:
-            print("⚠️ Mutagen not available - basic metadata extraction disabled")
+            print("⚠️ audio_processing not available - metadata extraction disabled")
             return {}
         except Exception as e:
             print(f"⚠️ Error extracting metadata from {track_path}: {e}")
@@ -227,6 +277,20 @@ class EnhancedAnalyzer:
                 
             # Get track metadata
             metadata = self._get_track_metadata(track_path)
+            
+            # OPTIONAL VALIDATION: Check audio file requirements (if not skipped)
+            if not self.skip_validation:
+                validation_result = self.validate_audio_requirements(track_path, metadata)
+                if not validation_result.valid:
+                    print(f"❌ VALIDATION FAILED: {validation_result.error_message}")
+                    return EnhancedAnalysisResult(
+                        track_path=track_path,
+                        success=False,
+                        error_message=validation_result.error_message,
+                        title=metadata.get('title', Path(track_path).stem),
+                        artist=metadata.get('artist', 'Unknown'),
+                        album=metadata.get('album', 'Unknown')
+                    )
                 
             # Check for existing analysis unless forced
             if not force_reanalysis:
@@ -276,6 +340,7 @@ class EnhancedAnalyzer:
                 album=metadata['album'],
                 bpm=metadata['bpm'] or hamms_dimensions.get('bpm'),
                 key=metadata['key'] or hamms_dimensions.get('key'),
+                energy=metadata.get('energy') or hamms_dimensions.get('energy'),
                 hamms_vector=hamms_vector,
                 hamms_confidence=hamms_confidence,
                 hamms_dimensions=hamms_dimensions
@@ -285,7 +350,7 @@ class EnhancedAnalyzer:
             if self.enable_ai and self.ai_enricher is not None:
                 try:
                     print(f"  AI enrichment: {path_obj.name}")
-                    ai_result = self._perform_ai_analysis(hamms_result)
+                    ai_result = self._perform_ai_analysis(hamms_result, llm_progress_callback)
                     
                     # Update result with AI data
                     result.genre = ai_result.get('genre')
@@ -362,6 +427,7 @@ class EnhancedAnalyzer:
                 album=track.album,
                 bpm=track.bpm,
                 key=track.initial_key,
+                energy=hamms_data.get_dimension_scores().get('energy', 0.0),
                 hamms_vector=hamms_data.get_vector_12d(),
                 hamms_confidence=hamms_data.ml_confidence or 0.0,
                 hamms_dimensions=hamms_data.get_dimension_scores()
@@ -384,11 +450,13 @@ class EnhancedAnalyzer:
             print(f"  WARNING: Failed to load cached analysis: {e}")
             return None
     
-    def _perform_ai_analysis(self, hamms_result: Dict[str, Any]) -> Dict[str, Any]:
+    def _perform_ai_analysis(self, hamms_result: Dict[str, Any], 
+                           progress_callback: Optional[callable] = None) -> Dict[str, Any]:
         """Perform AI enrichment analysis
         
         Args:
             hamms_result: Results from HAMMS analysis
+            progress_callback: Optional callback for progress updates
             
         Returns:
             AI analysis results
@@ -408,7 +476,7 @@ class EnhancedAnalyzer:
         }
         
         # Perform AI analysis
-        enrichment_result = self.ai_enricher.analyze_track(track_data)
+        enrichment_result = self.ai_enricher.analyze_track(track_data, progress_callback)
         
         # POML Quality Gate: Check for AI errors
         if not enrichment_result.success:

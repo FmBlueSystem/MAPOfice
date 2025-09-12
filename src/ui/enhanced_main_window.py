@@ -40,11 +40,12 @@ from PyQt6.QtWidgets import (
 # Import existing components
 from src.ui.hamms_radar_widget import HAMMSRadarWidget
 from src.ui.styles import StyleManager
+from src.ui.playlist_cli_widget import PlaylistCLIWidget
 
 # Import enhanced services
 from src.services.enhanced_analyzer import EnhancedAnalyzer, EnhancedAnalysisResult
 from src.services.storage import Storage
-from src.analysis import create_enricher_from_env
+from src.analysis.multi_llm_enricher import is_multi_llm_available
 from src.analysis.library_analytics import LibraryAnalyzer, LibraryAnalytics
 from src.services.analyzer import Analyzer
 
@@ -93,10 +94,15 @@ class EnhancedAnalyzeWorker(QThread):
                 self.log.emit(f"Analyzing {Path(track_path).name} ({i}/{total})")
                 self.progress.emit(i-1, total)
                 
+                # Create callback for LLM progress
+                def llm_callback(provider: str, status: str):
+                    self.llm_progress.emit(track_path, provider, status)
+                
                 # Perform enhanced analysis
                 result = self.analyzer.analyze_track(
                     track_path, 
-                    force_reanalysis=self.settings.force_reanalysis
+                    force_reanalysis=self.settings.force_reanalysis,
+                    llm_progress_callback=llm_callback
                 )
                 
                 results.append(result)
@@ -148,10 +154,10 @@ class EnhancedMainWindow(QMainWindow):
         
         # Initialize services
         self.storage = Storage.from_path("data/music.db")
-        self.enhanced_analyzer = EnhancedAnalyzer(self.storage, enable_ai=True)
+        self.enhanced_analyzer = EnhancedAnalyzer(self.storage, enable_ai=True, skip_validation=True)
         self.analyzer = Analyzer(self.storage)
         self.library_analyzer = LibraryAnalyzer(self.storage)
-        self.ai_available = create_enricher_from_env() is not None
+        self.ai_available = is_multi_llm_available()
         
         # State
         self.worker: Optional[EnhancedAnalyzeWorker] = None
@@ -232,6 +238,10 @@ class EnhancedMainWindow(QMainWindow):
         # Library Analytics Tab
         self.analytics_tab = self._create_library_analytics_tab()
         self.tab_widget.addTab(self.analytics_tab, "Library Analytics")
+        
+        # Playlist CLI Tab
+        self.playlist_cli_tab = PlaylistCLIWidget()
+        self.tab_widget.addTab(self.playlist_cli_tab, "🎧 Playlist CLI")
         
         layout.addWidget(self.tab_widget)
         layout.setStretchFactor(self.tab_widget, 1)  # Give all space to tabs
@@ -582,10 +592,11 @@ class EnhancedMainWindow(QMainWindow):
         log_layout.setContentsMargins(2, 2, 2, 2)  # Minimal margins
         
         self.log_output = QTextEdit()
-        self.log_output.setMaximumHeight(70)  # Further reduced for space
+        self.log_output.setMaximumHeight(120)  # Increased for AI analysis details
         self.log_output.setReadOnly(True)
+        self.log_output.setAcceptRichText(True)  # Enable HTML formatting
         self.log_output.setStyleSheet("""
-            font-family: 'Monaco', 'Courier New', monospace;
+            font-family: 'Monaco', 'Courier New', 'SF Mono', 'Menlo', monospace;
             background-color: #ffffff;
             border: 2px solid #000000;
             border-radius: 6px;
@@ -854,19 +865,51 @@ class EnhancedMainWindow(QMainWindow):
             
     def _on_log(self, message: str):
         """Handle log message"""
-        self.log_output.append(message)
+        # Special formatting for validation errors
+        if "VALIDATION FAILED" in message:
+            # Make validation errors more prominent
+            formatted_message = f"<span style='color: red; font-weight: bold;'>{message}</span>"
+            self.log_output.append(formatted_message)
+        elif "missing mandatory metadata" in message.lower():
+            # Format missing metadata warnings
+            formatted_message = f"<span style='color: orange; font-weight: bold;'>⚠️ {message}</span>"
+            self.log_output.append(formatted_message)
+        else:
+            self.log_output.append(message)
+            
         # Auto-scroll to bottom
         scrollbar = self.log_output.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
         
     def _on_track_analyzed(self, track_path: str, analysis_data: Dict[str, Any]):
         """Handle individual track analysis completion"""
+        # Display AI analysis results in the log
+        filename = Path(track_path).name
+        title = analysis_data.get('title', 'Unknown')
+        artist = analysis_data.get('artist', 'Unknown')
+        
+        # Show AI classification results if available
+        ai_data = analysis_data.get('ai_enrichment')
+        if ai_data and isinstance(ai_data, dict):
+            genre = ai_data.get('genre', 'N/A')
+            era = ai_data.get('era', 'N/A')
+            mood = ai_data.get('mood', 'N/A')
+            known_year = ai_data.get('known_year') or ai_data.get('known_original_year')
+            artist_known = ai_data.get('artist_known', False)
+            
+            # Format the AI analysis output
+            ai_status = "✅" if artist_known else "❓"
+            year_info = f" [{known_year}]" if known_year else ""
+            
+            self.log_output.append(f"""🎵 <b>{artist} - {title}</b>
+   🤖 AI: {ai_status} Genre: <b>{genre}</b> | Era: <b>{era}{year_info}</b> | Mood: <b>{mood}</b>""")
+        else:
+            self.log_output.append(f"🎵 <b>{artist} - {title}</b> - Analysis complete")
+        
         # Add to radar chart if it's visible
         if self.tab_widget.currentIndex() == 1:  # Visualization tab
             try:
                 # Get title from analysis data or fallback to filename
-                title = analysis_data.get('title') or Path(track_path).stem
-                artist = analysis_data.get('artist')
                 display_name = f"{artist} - {title}" if artist else title
                 
                 self.radar_widget.load_track_data(
@@ -904,10 +947,16 @@ class EnhancedMainWindow(QMainWindow):
         # Show summary
         successful = sum(1 for r in results if r.success)
         ai_enriched = sum(1 for r in results if r.success and r.genre is not None)
+        validation_failed = [r for r in results if not r.success and r.error_message and "missing mandatory metadata" in r.error_message.lower()]
         
         self.log_output.append(f"✅ Analysis complete!")
         self.log_output.append(f"   • {successful}/{len(results)} tracks analyzed successfully")
         self.log_output.append(f"   • {ai_enriched}/{successful} tracks AI-enriched")
+        
+        if validation_failed:
+            self.log_output.append(f"   • {len(validation_failed)} tracks rejected due to missing metadata")
+            self.log_output.append("<span style='color: red; font-weight: bold;'>⚠️ Files with missing mandatory metadata cannot be processed</span>")
+            self.log_output.append("<span style='color: red;'>Required: BPM, Key, Energy, Comments</span>")
         
         # Switch to results tab
         self.tab_widget.setCurrentIndex(2)
@@ -935,7 +984,7 @@ class EnhancedMainWindow(QMainWindow):
             
             # Extract key from result or HAMMS analysis
             key = result.key or "N/A"
-            if key == "N/A" and result.hamms_dimensions.get('key'):
+            if key == "N/A" and result.hamms_dimensions and result.hamms_dimensions.get('key'):
                 # Convert normalized key to musical key if possible
                 key_val = result.hamms_dimensions.get('key', 0)
                 if key_val > 0:
@@ -1531,7 +1580,7 @@ class EnhancedMainWindow(QMainWindow):
         self.analytics_content.setReadOnly(True)
         self.analytics_content.setPlainText("Click 'Refresh Analytics' to analyze your library...")
         self.analytics_content.setStyleSheet("""
-            font-family: 'Monaco', 'Courier New', monospace;
+            font-family: 'Monaco', 'Courier New', 'SF Mono', 'Menlo', monospace;
             font-size: 11px;
             color: #000000;
             background-color: #ffffff;
@@ -1555,7 +1604,7 @@ class EnhancedMainWindow(QMainWindow):
         self.subgenre_details.setReadOnly(True)
         self.subgenre_details.setPlainText("Select a subgenre from the list to see detailed analysis...")
         self.subgenre_details.setStyleSheet("""
-            font-family: 'Consolas', 'Monaco', monospace;
+            font-family: 'Consolas', 'Monaco', 'SF Mono', 'Menlo', monospace;
             font-size: 12px;
             background-color: #ffffff;
             border: 2px solid #000000;
@@ -1640,7 +1689,7 @@ class EnhancedMainWindow(QMainWindow):
             "💡 Start by analyzing some music files!"
         )
         self.playlist_results.setStyleSheet("""
-            font-family: 'Monaco', 'Courier New', monospace;
+            font-family: 'Monaco', 'Courier New', 'SF Mono', 'Menlo', monospace;
             font-size: 11px;
             color: #000000;
             background-color: #ffffff;

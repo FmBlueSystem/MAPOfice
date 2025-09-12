@@ -23,6 +23,7 @@ class LLMProvider(Enum):
     OPENAI = "openai"
     GEMINI = "gemini"
     ZAI = "zai"
+    ANTHROPIC = "anthropic"
 
 
 @dataclass
@@ -111,26 +112,103 @@ The 12-dimensional HAMMS vector represents harmonic and acoustic features:
 - Dimensions 4-7: Rhythmic patterns and percussive elements  
 - Dimensions 8-11: Timbral characteristics and sonic texture
 
+**STEP 1: Date Verification (CRITICAL)**
+First, determine if you know the original release date for this artist and track:
+- Do you recognize this artist and song combination?
+- What is the known original release year/decade?
+- Does the metadata date match your knowledge?
+- If there's a discrepancy, note it as a likely reissue/compilation scenario
+
 **Required JSON Response Format:**
 ```json
 {{
+    "date_verification": {{
+        "artist_known": true/false,
+        "track_known": true/false,
+        "known_original_year": "1979" or null,
+        "metadata_year": "1992",
+        "is_likely_reissue": true/false,
+        "verification_notes": "Brief explanation of date analysis"
+    }},
     "genre": "Primary music genre",
     "subgenre": "Specific subgenre classification", 
     "mood": "Emotional mood/atmosphere",
-    "era": "Musical era or decade",
+    "era": "Musical era or decade (use verified original date if available)",
     "tags": ["descriptive", "keywords", "style", "elements"],
     "confidence": 0.85,
-    "analysis_notes": "Brief explanation of the classification"
+    "analysis_notes": "Brief explanation of the classification including date verification"
 }}
 ```
 
-**Analysis Guidelines:**
-1. Use the BPM and energy to inform tempo and intensity classifications
+**CRITICAL Analysis Guidelines:**
+
+**Era Classification Rules:**
+- Determine the ORIGINAL musical era when the song was first created, NOT reissue/compilation dates
+- Use specific decades: "1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "2020s"
+- Consider the artist's peak period and musical style context
+- CRITICAL: Cross-validate metadata dates with artist career timeline and genre emergence
+- ISRC codes: The year in ISRC is Year of Reference for catalog assignment, NOT recording year
+- If genre predates metadata date significantly, investigate for reissue scenario
+- Examples: The Police → "1980s" (not 1995 compilation date), Beatles → "1960s"
+
+**Genre Classification Rules:**
+- Be precise and specific, avoid overly generic terms like "pop" or "rock"
+- Use established music genres: New Wave, Post-Punk, Synthpop, Progressive Rock, Funk, etc.
+- For subgenres, be even more specific: "British New Wave", "Darkwave", "Italo Disco"
+- Consider historical and cultural context of the artist and era
+
+**CRITICAL: Genre Evolution and Hybrid Classification:**
+- **Soul vs Disco (1975-1980)**: If artist is soul but year is 1975+, likely "Disco" with subgenre "Disco Soul"
+- **Rock vs New Wave (1977-1985)**: Post-1977 rock bands are often "New Wave" or "Post-Punk"
+- **Pop vs Synthpop (1980-1989)**: 1980s pop with synthesizers is "Synthpop" not generic "Pop"
+- **R&B Evolution**: 1990s+ R&B is "Contemporary R&B", 1970s R&B is "Soul" or "Funk"
+- **Electronic Evolution**: 1970s electronic is "Electronic/Krautrock", 1980s is "Synthpop/New Wave", 1990s+ is specific subgenres
+
+**Historical Genre Transitions:**
+- **1975-1979**: Soul → Disco, Rock → Punk/New Wave
+- **1980-1984**: Disco → New Wave/Synthpop, Rock → Post-Punk
+- **1985-1989**: New Wave → Alternative Rock, Synthpop → Dance/House
+- **1990-1994**: Disco Revival/Euro House, Alternative Rock, Early Hip-Hop
+- **1995-1999**: House/Techno dominance, Grunge peak, Contemporary R&B
+- **2000s+**: Electronic music diversification, Hip-Hop mainstream
+
+**Technical Analysis:**
+1. Use BPM and energy to inform tempo and intensity classifications
 2. Consider the key signature for harmonic style analysis
 3. Use HAMMS vector patterns to identify genre-specific characteristics
 4. Provide confidence score between 0-1 based on data quality
 5. Include 3-5 relevant tags describing musical style and elements
-6. Be specific with subgenre classifications (e.g., "Deep House" not just "House")
+
+**BPM-Based Genre Indicators:**
+- **60-90 BPM**: Ballads, Slow Soul, Ambient
+- **90-110 BPM**: Soul, R&B, Hip-Hop, Trip-Hop
+- **110-130 BPM**: Disco, Funk, House, Pop, Rock
+- **130-140 BPM**: Techno, Trance, Hard Rock
+- **140+ BPM**: Punk, Hardcore, Speed Metal, Drum & Bass
+
+**Energy Level Genre Mapping:**
+- **0.0-0.3**: Ambient, Ballads, Classical, Downtempo
+- **0.3-0.5**: Soul, Folk, Jazz, Soft Rock
+- **0.5-0.7**: Pop, Disco, New Wave, Alternative
+- **0.7-0.9**: Rock, Funk, Dance, Punk
+- **0.9-1.0**: Metal, Hardcore, Aggressive Electronic
+
+**Example Classifications:**
+- The Police → Genre: "New Wave", Subgenre: "British New Wave", Era: "1980s"
+- A Flock of Seagulls → Genre: "Synthpop", Subgenre: "New Romantic", Era: "1980s"
+- Kraftwerk → Genre: "Electronic", Subgenre: "Krautrock", Era: "1970s"
+
+**Genre-Era Validation Logic:**
+- **Disco detection**: If BPM 110-130, high energy, 4/4 rhythm → likely Disco (1970s-early 1980s)
+- **New Wave indicators**: Synthesizers + post-1977 → likely New Wave (1980s), not generic Rock
+- **Electronic evolution**: Pre-1990 electronic usually Synthpop/New Wave, not House/Techno
+- **Reissue red flags**: Modern electronic subgenres with vintage BPM/energy patterns
+- **Cross-validation**: Artist name + genre + era must align historically
+
+**Example Validation Patterns:**
+- Classic Disco sound + 1990s date = investigate for reissue scenario
+- New Wave characteristics + 1970s date = likely mislabeled, should be 1980s
+- House/Techno genre + pre-1985 date = impossible, check for reissue
 
 Respond only with valid JSON."""
 
@@ -177,10 +255,17 @@ class LLMProviderFactory:
                 
         elif config.provider == LLMProvider.ZAI:
             try:
-                from src.analysis.zai_provider import ZaiProvider
-                return ZaiProvider(config)
+                from src.analysis.zai_provider_minimal import MinimalZaiProvider
+                return MinimalZaiProvider(config)
             except ImportError as e:
                 raise ValueError(f"Z.ai provider not available: {e}")
+                
+        elif config.provider == LLMProvider.ANTHROPIC:
+            try:
+                from src.analysis.claude_provider import ClaudeProvider
+                return ClaudeProvider(config)
+            except ImportError as e:
+                raise ValueError(f"Anthropic provider not available: {e}")
         else:
             raise ValueError(f"Unsupported LLM provider: {config.provider}")
 
@@ -195,34 +280,12 @@ def get_recommended_configs() -> List[LLMConfig]:
     
     configs = []
     
-    # Gemini - Most cost-effective option
-    if os.getenv('GEMINI_API_KEY'):
+    # Claude Haiku - ONLY supported LLM provider
+    if os.getenv('ANTHROPIC_API_KEY'):
         configs.append(LLMConfig(
-            provider=LLMProvider.GEMINI,
-            api_key=os.getenv('GEMINI_API_KEY'),
-            model="gemini-1.5-flash",  # Fastest and cheapest
-            max_tokens=1000,
-            temperature=0.1,
-            rate_limit_rpm=60
-        ))
-    
-    # Z.ai - Competitive pricing with strong performance
-    if os.getenv('ZAI_API_KEY'):
-        configs.append(LLMConfig(
-            provider=LLMProvider.ZAI,
-            api_key=os.getenv('ZAI_API_KEY'),
-            model="glm-4-32b-0414-128k",  # Cost-effective model
-            max_tokens=1000,
-            temperature=0.1,
-            rate_limit_rpm=60
-        ))
-    
-    # OpenAI - More expensive but reliable
-    if os.getenv('OPENAI_API_KEY'):
-        configs.append(LLMConfig(
-            provider=LLMProvider.OPENAI,
-            api_key=os.getenv('OPENAI_API_KEY'),
-            model="gpt-4o-mini",  # Cheapest OpenAI option
+            provider=LLMProvider.ANTHROPIC,
+            api_key=os.getenv('ANTHROPIC_API_KEY'),
+            model="claude-3-haiku-20240307",  # Optimized Claude model
             max_tokens=1000,
             temperature=0.1,
             rate_limit_rpm=60

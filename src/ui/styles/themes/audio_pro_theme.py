@@ -307,7 +307,7 @@ class AudioProTheme(BaseTheme):
             border-radius: 4px;
             padding: 8px;
             color: {self._colors['text_primary']};
-            font-family: 'Monaco', 'Courier New', monospace;
+            font-family: 'Monaco', 'Courier New', 'SF Mono', 'Menlo', monospace;
             font-size: 12px;
             line-height: 1.4;
         }}
@@ -332,10 +332,10 @@ class AudioProTheme(BaseTheme):
             border-color: {self._colors['primary']};
         }}
         
-        QCheckBox::indicator:checked::after {{
-            content: "✓";
-            color: {self._colors['text_on_primary']};
-            font-weight: bold;
+        QCheckBox::indicator:checked {{
+            image: none;
+            background-color: {self._colors['primary']};
+            border-color: {self._colors['primary']};
         }}
         
         /* Progress Bar Styling */

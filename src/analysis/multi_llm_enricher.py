@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable
 from dataclasses import dataclass
 
 from src.analysis.llm_provider import (
@@ -83,54 +83,31 @@ class MultiLLMEnricher:
                 print(f"❌ Failed to configure {config.provider.value}: {e}")
     
     def _create_config_for_provider(self, provider_name: str) -> Optional[LLMConfig]:
-        """Create configuration for a specific provider from environment variables"""
+        """Create configuration for Anthropic Claude only"""
         
-        if provider_name.lower() == "openai":
-            api_key = os.getenv('OPENAI_API_KEY')
-            if not api_key or api_key.startswith('#'):
-                return None
-            
-            return LLMConfig(
-                provider=LLMProvider.OPENAI,
-                api_key=api_key,
-                model=os.getenv('OPENAI_MODEL', 'gpt-4o-mini'),
-                max_tokens=int(os.getenv('OPENAI_MAX_TOKENS', '1000')),
-                temperature=float(os.getenv('OPENAI_TEMPERATURE', '0.1'))
-            )
-            
-        elif provider_name.lower() == "gemini":
-            api_key = os.getenv('GEMINI_API_KEY')
-            if not api_key or api_key == 'your_gemini_api_key_here':
+        if provider_name.lower() == "anthropic":
+            api_key = os.getenv('ANTHROPIC_API_KEY')
+            if not api_key or api_key == 'your_anthropic_api_key_here':
                 return None
                 
             return LLMConfig(
-                provider=LLMProvider.GEMINI,
+                provider=LLMProvider.ANTHROPIC,
                 api_key=api_key,
-                model=os.getenv('GEMINI_MODEL', 'gemini-1.5-flash'),
-                max_tokens=int(os.getenv('GEMINI_MAX_TOKENS', '1000')),
-                temperature=float(os.getenv('GEMINI_TEMPERATURE', '0.1'))
-            )
-            
-        elif provider_name.lower() == "zai":
-            api_key = os.getenv('ZAI_API_KEY')
-            if not api_key or api_key == 'your_zai_api_key_here':
-                return None
-                
-            return LLMConfig(
-                provider=LLMProvider.ZAI,
-                api_key=api_key,
-                model=os.getenv('ZAI_MODEL', 'glm-4-32b-0414-128k'),
-                max_tokens=int(os.getenv('ZAI_MAX_TOKENS', '1000')),
-                temperature=float(os.getenv('ZAI_TEMPERATURE', '0.1'))
+                model=os.getenv('ANTHROPIC_MODEL', 'claude-3-haiku-20240307'),
+                max_tokens=int(os.getenv('ANTHROPIC_MAX_TOKENS', '1000')),
+                temperature=float(os.getenv('ANTHROPIC_TEMPERATURE', '0.1'))
             )
         
+        # Only Anthropic is supported
         return None
     
-    def analyze_track(self, track_data: Dict[str, Any]) -> EnrichmentResult:
+    def analyze_track(self, track_data: Dict[str, Any], 
+                     progress_callback: Optional[Callable[[str, str], None]] = None) -> EnrichmentResult:
         """Analyze track with fallback support
         
         Args:
             track_data: Track metadata including HAMMS vector
+            progress_callback: Optional callback for progress updates (provider, status)
             
         Returns:
             Enrichment result with analysis or error information
@@ -146,11 +123,20 @@ class MultiLLMEnricher:
         # Try each provider in order (cheapest first)
         for provider in self.providers:
             try:
-                print(f"🔄 Analyzing with {provider.config.provider.value.title()} ({provider.config.model})...")
+                provider_name = provider.config.provider.value.title()
+                print(f"🔄 Analyzing with {provider_name} ({provider.config.model})...")
+                
+                # Notify UI about starting analysis
+                if progress_callback:
+                    progress_callback(provider_name, "analyzing")
                 
                 response = provider.analyze_track(track_data)
                 
                 if response.success:
+                    # Notify UI about success
+                    if progress_callback:
+                        progress_callback(provider_name, "success")
+                    
                     # Convert LLM response to enrichment result
                     return EnrichmentResult(
                         success=True,
@@ -166,12 +152,18 @@ class MultiLLMEnricher:
                         cost_estimate=response.cost_estimate
                     )
                 else:
-                    print(f"❌ {provider.config.provider.value.title()} failed: {response.error_message}")
+                    print(f"❌ {provider_name} failed: {response.error_message}")
+                    # Notify UI about failure
+                    if progress_callback:
+                        progress_callback(provider_name, "failed")
                     last_error = response.error_message
                     continue
                     
             except Exception as e:
-                print(f"❌ Exception with {provider.config.provider.value.title()}: {str(e)}")
+                print(f"❌ Exception with {provider_name}: {str(e)}")
+                # Notify UI about failure
+                if progress_callback:
+                    progress_callback(provider_name, "failed")
                 last_error = str(e)
                 continue
         
@@ -215,4 +207,37 @@ class MultiLLMEnricher:
                 return True
         
         print(f"❌ Provider {provider_name} not available")
+        return False
+
+
+def create_multi_llm_enricher_from_env(preferred_provider: Optional[str] = None) -> Optional[MultiLLMEnricher]:
+    """Create MultiLLMEnricher from environment variables
+    
+    Args:
+        preferred_provider: Preferred provider to use (optional)
+        
+    Returns:
+        MultiLLMEnricher instance if any providers are available, None otherwise
+    """
+    try:
+        enricher = MultiLLMEnricher(preferred_provider=preferred_provider)
+        if enricher.providers:
+            return enricher
+        else:
+            return None
+    except Exception as e:
+        print(f"Failed to create MultiLLMEnricher: {e}")
+        return None
+
+
+def is_multi_llm_available() -> bool:
+    """Check if any LLM providers are available
+    
+    Returns:
+        True if at least one LLM provider is configured and available
+    """
+    try:
+        enricher = MultiLLMEnricher()
+        return len(enricher.providers) > 0
+    except Exception:
         return False

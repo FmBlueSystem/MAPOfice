@@ -256,37 +256,29 @@ Reglas:
             # Extract metadata date for comparison
             metadata_date = track_data.get('date', 'Unknown')
             
-            # Use microprompt strategy: Simple, direct, pattern-based
-            microprompt = f"""Classify this song: {artist} - {title}
+            prompt = f"""Track: {artist} - {title}
+BPM: {bpm}, Energy: {energy:.3f}, Metadata Date: {metadata_date}
 
-Return JSON only:
-{{"artist_known": true/false, "genre": "specific_genre", "era": "decade", "mood": "descriptive_word"}}
+Return ONLY this JSON (no explanation):
 
-Genre patterns:
-- 1980s synth/electronic pop → "synth-pop", "new wave", "dance-pop"
-- 1970s dance music → "disco", "funk", "soul"  
-- 1990s electronic → "house", "techno", "eurodance"
-- 2000s+ → "electro house", "progressive house"
-- Rock variants → "rock", "alternative rock", "indie rock"
-- Slower songs → "ballad", "soft rock"
-
-Era based on original release decade, not reissue."""
+{{
+  "artist_known": false,
+  "known_year": null,
+  "is_reissue": false,
+  "genre": "disco",
+  "era": "1970s",
+  "mood": "upbeat"
+}}"""
             
-            # Enhanced system message with clear music knowledge expectations
+            # Enhanced messages for more reliable JSON output
             messages = [
                 {
                     "role": "system", 
-                    "content": """You are a music classification expert with deep knowledge of artists, genres, and musical eras.
-
-CRITICAL RULES:
-- Respond ONLY with valid JSON
-- Use your knowledge of the specific artist and song
-- Be precise with genre classification based on musical style and era
-- Era should reflect the original release decade"""
+                    "content": "Eres un validador musical experto. Responde ÚNICAMENTE con JSON válido y completo. Sin explicaciones, sin texto adicional. Solo JSON puro."
                 },
                 {
                     "role": "user", 
-                    "content": microprompt
+                    "content": prompt
                 }
             ]
             
@@ -412,65 +404,31 @@ CRITICAL RULES:
     
     def _generate_fallback_json(self, track_data: Dict[str, Any]) -> str:
         """Generate fallback JSON when GLM-4.5-Flash reasoning doesn't contain parseable JSON"""
-        # Basic genre inference from BPM and energy with improved logic
+        # Basic genre inference from BPM and energy
         bpm = track_data.get('bpm', 120)
         energy = track_data.get('energy', 0.5)
-        metadata_date = track_data.get('date', 'Unknown')
         
-        # Try to extract year from metadata_date for era classification
-        era = "2020s"  # default
-        if isinstance(metadata_date, str):
-            import re
-            year_match = re.search(r'(\d{4})', metadata_date)
-            if year_match:
-                year = int(year_match.group(1))
-                if 1950 <= year < 1960:
-                    era = "1950s"
-                elif 1960 <= year < 1970:
-                    era = "1960s"
-                elif 1970 <= year < 1980:
-                    era = "1970s"
-                elif 1980 <= year < 1990:
-                    era = "1980s"
-                elif 1990 <= year < 2000:
-                    era = "1990s"
-                elif 2000 <= year < 2010:
-                    era = "2000s"
-                elif 2010 <= year < 2020:
-                    era = "2010s"
-                elif 2020 <= year < 2030:
-                    era = "2020s"
-        
-        # Improved genre classification based on BPM and energy
         if bpm > 140 and energy > 0.7:
-            genre = "dance" if era in ["2000s", "2010s", "2020s"] else "electronic"
-            subgenre = "high energy dance"
+            genre = "electronic"
             mood = "energetic"
-        elif bpm >= 120 and energy > 0.6:
-            if era == "1980s":
-                genre = "synth-pop"
-                subgenre = "new wave"
-            elif era == "1970s":
-                genre = "disco"
-                subgenre = "classic disco"
-            else:
-                genre = "pop"
-                subgenre = "upbeat pop"
+        elif bpm > 120 and energy > 0.6:
+            genre = "rock"
             mood = "upbeat"
         elif bpm < 90 and energy < 0.4:
             genre = "ballad"
-            subgenre = "slow ballad"
             mood = "calm"
         else:
             genre = "pop"
-            subgenre = "mid-tempo pop"
             mood = "moderate"
         
         fallback_response = {
-            "artist_known": False,
             "genre": genre,
-            "era": era,
-            "mood": mood
+            "subgenre": f"{genre} fusion",
+            "mood": mood,
+            "era": "2020s",
+            "tags": [genre, mood, "modern"],
+            "confidence": 0.6,
+            "analysis_notes": "Generated from basic audio features (GLM-4.5-Flash reasoning fallback)"
         }
         
         return json.dumps(fallback_response)

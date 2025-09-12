@@ -6,6 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Launch Application
 ```bash
+# IMPORTANT: ALWAYS activate virtual environment first
+source .venv/bin/activate
+
 # Launch the PyQt6 Enhanced UI with tabs and full features (recommended)
 python -m src.ui.enhanced_main_window
 
@@ -17,6 +20,9 @@ make ui
 
 ### Testing
 ```bash
+# IMPORTANT: ALWAYS activate virtual environment first
+source .venv/bin/activate
+
 # Run all tests using pytest
 python -m pytest tests/
 
@@ -245,3 +251,40 @@ The application performs sophisticated music analysis including:
 - [ ] ✅ UI/backend configuration verified
 - [ ] ✅ Runtime validation implemented
 - [ ] ✅ Post-execution quality checks added
+
+# CRITICAL: Python Virtual Environment Requirements
+
+## MANDATORY: Always Activate Virtual Environment
+
+**BEFORE running ANY Python command, ALWAYS execute:**
+```bash
+source .venv/bin/activate
+```
+
+### Why This Is Critical:
+- **zai-sdk** and other AI packages are installed ONLY in `.venv`
+- Running without virtual environment = **AI features disabled**
+- Recent incident: App launched without venv showed "No LLM providers configured"
+
+### Virtual Environment Commands:
+```bash
+# Check if venv is active (should show (.venv) in prompt)
+echo $VIRTUAL_ENV
+
+# Activate virtual environment
+source .venv/bin/activate
+
+# Deactivate (if needed)
+deactivate
+
+# Install packages in venv
+source .venv/bin/activate && pip install package_name
+```
+
+### All Python Operations Require Virtual Environment:
+- ✅ `source .venv/bin/activate && python -m src.ui.enhanced_main_window`
+- ✅ `source .venv/bin/activate && python -m pytest tests/`
+- ✅ `source .venv/bin/activate && pip install zai-sdk`
+- ❌ `python -m src.ui.enhanced_main_window` (will fail with AI disabled)
+
+**This instruction overrides all previous Python command examples. NEVER run Python commands without activating the virtual environment first.**
