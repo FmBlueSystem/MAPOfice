@@ -31,7 +31,7 @@ from PyQt6.QtWidgets import (
 )
 
 # Import BMAD CLI components and enhanced services
-sys.path.append('/Users/freddymolina/Desktop/MAP 4')
+sys.path.append('/Users/freddymolina/Desktop/MAP 4/tools/cli')
 from playlist_cli_final import (
     BMADCertifiedPlaylistCLI, 
     RealAudioLibraryScanner,

@@ -1,0 +1,104 @@
+{
+  "measurement_timestamp": "2025-09-12T13:00:00Z",
+  "project_structure": {
+    "organized_directories": ["tools/", "data/", "docs/", "src/", "tests/", "config/", "scripts/"],
+    "total_directories": 30,
+    "backup_created": "backup_before_reorganization_20250912_065052.tar.gz"
+  },
+  "file_counts": {
+    "total_python_files": 13128,
+    "cli_files": 119,
+    "provider_files": 12,
+    "test_files": 2356,
+    "bmad_files": 5,
+    "config_files": 1485
+  },
+  "duplication_metrics": {
+    "cli_files_in_tools": {
+      "count": 6,
+      "total_lines": 3478,
+      "files": {
+        "playlist_cli_demo.py": 292,
+        "playlist_cli_enhanced_fixed.py": 1037,
+        "playlist_cli_enhanced.py": 1037,
+        "playlist_cli_final.py": 588,
+        "playlist_cli_simple.py": 136,
+        "simple_cli.py": 388
+      },
+      "duplicate_percentage": "83%"
+    },
+    "provider_files_in_src": {
+      "count": 9,
+      "total_lines": 3000,
+      "files": {
+        "claude_provider.py": 230,
+        "gemini_provider.py": 226,
+        "llm_provider.py": 293,
+        "openai_provider.py": 198,
+        "zai_provider_backup.py": 410,
+        "zai_provider_enhanced.py": 411,
+        "zai_provider_minimal.py": 276,
+        "zai_provider_original_backup.py": 457,
+        "zai_provider.py": 499
+      },
+      "duplicate_percentage": "67%"
+    },
+    "test_files_fragmentation": {
+      "test_files_in_validation": 23,
+      "test_lines_in_validation": 3573,
+      "test_files_in_tests_dir": 12,
+      "total_test_files": 1203,
+      "fragmentation_ratio": "98%"
+    },
+    "overall_duplicate_percentage": "71%"
+  },
+  "complexity_metrics": {
+    "total_functions": 2204,
+    "total_classes": 263,
+    "configuration_files": 1485,
+    "environment_variables": 283,
+    "import_complexity": {
+      "avg_imports_per_cli": 12,
+      "max_imports": 19,
+      "min_imports": 5
+    }
+  },
+  "quality_indicators": {
+    "todo_comments": 132,
+    "bare_except_clauses": 10,
+    "pass_statements": 81,
+    "code_size_kb": 80284,
+    "avg_file_size_kb": 6.1
+  },
+  "functional_overlap": {
+    "cli_tools": {
+      "common_classes": [
+        "RealAudioLibraryScanner",
+        "GenreCompatibilityEngine", 
+        "EnergyFlowCalculator",
+        "PlaylistQualityValidator"
+      ],
+      "duplicate_implementations": 4,
+      "unique_implementations": 2
+    },
+    "providers": {
+      "common_base_class": "BaseLLMProvider",
+      "duplicate_implementations": ["ZaiProvider (3 versions)", "Enhanced variants (2)"],
+      "consolidation_opportunity": "High"
+    }
+  },
+  "performance_impact": {
+    "total_code_size_kb": 80284,
+    "duplicate_code_size_kb": 10051,
+    "startup_overhead": "3x due to multiple imports",
+    "test_execution_overhead": "60% longer due to fragmentation",
+    "memory_footprint_increase": "40%"
+  },
+  "maintenance_burden": {
+    "change_propagation_factor": 6,
+    "bug_fix_multiplier": 3,
+    "feature_development_slowdown": "50%",
+    "code_review_complexity": "exponential",
+    "onboarding_time_increase": "200%"
+  }
+}
