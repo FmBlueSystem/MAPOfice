@@ -223,6 +223,39 @@ Respond only with valid JSON."""
         pass
 
 
+class LLMProviderAdapter(BaseLLMProvider):
+    """Adapter to wrap new unified providers for backward compatibility"""
+    
+    def __init__(self, provider, config: LLMConfig):
+        """Initialize adapter with new provider and old config"""
+        super().__init__(config)
+        self.provider = provider
+        
+    def analyze_track(self, track_data: Dict[str, Any]) -> LLMResponse:
+        """Analyze track using wrapped provider"""
+        # Call the new provider
+        response = self.provider.analyze_track(track_data)
+        
+        # Convert ProviderResponse to LLMResponse
+        return LLMResponse(
+            success=response.success,
+            content=response.content,
+            raw_response=response.raw_response,
+            provider=self.config.provider,
+            model=response.model,
+            processing_time_ms=response.processing_time_ms,
+            tokens_used=response.tokens_used,
+            cost_estimate=response.cost_estimate,
+            error_message=response.error_message
+        )
+    
+    def _estimate_cost(self, prompt_tokens: int, response_tokens: int) -> float:
+        """Estimate cost using wrapped provider"""
+        if hasattr(self.provider, '_estimate_cost'):
+            return self.provider._estimate_cost(prompt_tokens, response_tokens)
+        return 0.0
+
+
 class LLMProviderFactory:
     """Factory class to create appropriate LLM providers"""
     
@@ -239,35 +272,33 @@ class LLMProviderFactory:
         Raises:
             ValueError: If provider is not supported
         """
-        if config.provider == LLMProvider.OPENAI:
-            try:
-                from src.analysis.openai_provider import OpenAIProvider
-                return OpenAIProvider(config)
-            except ImportError as e:
-                raise ValueError(f"OpenAI provider not available: {e}")
-                
-        elif config.provider == LLMProvider.GEMINI:
-            try:
-                from src.analysis.gemini_provider import GeminiProvider  
-                return GeminiProvider(config)
-            except ImportError as e:
-                raise ValueError(f"Gemini provider not available: {e}")
-                
-        elif config.provider == LLMProvider.ZAI:
-            try:
-                from src.analysis.zai_provider_minimal import MinimalZaiProvider
-                return MinimalZaiProvider(config)
-            except ImportError as e:
-                raise ValueError(f"Z.ai provider not available: {e}")
-                
-        elif config.provider == LLMProvider.ANTHROPIC:
-            try:
-                from src.analysis.claude_provider import ClaudeProvider
-                return ClaudeProvider(config)
-            except ImportError as e:
-                raise ValueError(f"Anthropic provider not available: {e}")
-        else:
-            raise ValueError(f"Unsupported LLM provider: {config.provider}")
+        # Import the new factory and providers to trigger registration
+        from src.analysis.provider_factory import ProviderFactory, ProviderConfig, ProviderType
+        import src.analysis.providers  # Import to trigger auto-registration
+        
+        # Convert LLMConfig to ProviderConfig
+        provider_config = ProviderConfig(
+            provider_type=ProviderType(config.provider.value),
+            api_key=config.api_key,
+            model=config.model,
+            max_tokens=config.max_tokens,
+            temperature=config.temperature,
+            timeout=config.timeout,
+            max_retries=config.max_retries,
+            rate_limit_rpm=config.rate_limit_rpm
+        )
+        
+        # Use the new factory to create provider
+        try:
+            provider = ProviderFactory.create_provider(
+                name=config.provider.value,
+                config=provider_config
+            )
+            
+            # Wrap the new provider to maintain backward compatibility
+            return LLMProviderAdapter(provider, config)
+        except Exception as e:
+            raise ValueError(f"Failed to create provider {config.provider.value}: {e}")
 
 
 def get_recommended_configs() -> List[LLMConfig]:

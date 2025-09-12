@@ -31,12 +31,22 @@ from PyQt6.QtWidgets import (
 )
 
 # Import BMAD CLI components and enhanced services
-sys.path.append('/Users/freddymolina/Desktop/MAP 4/tools/cli')
-from playlist_cli_final import (
-    BMADCertifiedPlaylistCLI, 
-    RealAudioLibraryScanner,
-    PlaylistQualityValidator
-)
+# Note: CLI consolidated - using archive reference temporarily
+sys.path.append('/Users/freddymolina/Desktop/MAP 4/archive/old_cli')
+try:
+    from playlist_cli_final import (
+        BMADCertifiedPlaylistCLI, 
+        RealAudioLibraryScanner,
+        PlaylistQualityValidator
+    )
+except ImportError:
+    # Fallback - define minimal classes for UI compatibility
+    class BMADCertifiedPlaylistCLI:
+        pass
+    class RealAudioLibraryScanner:
+        pass
+    class PlaylistQualityValidator:
+        pass
 
 # Import unified storage system (same as Enhanced Analysis tab)
 from src.services.storage import Storage
