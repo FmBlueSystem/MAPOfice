@@ -1,0 +1,59 @@
+{
+  "session": {
+    "id": "MAP4_BUILD_001",
+    "started": "2024-12-01T10:00:00",
+    "last_checkpoint": null
+  },
+  "progress": {
+    "total_prompts": 40,
+    "completed": [],
+    "current": null,
+    "failed": [],
+    "phase": "01-foundation"
+  },
+  "prompts": {
+    "01-foundation": {
+      "01.1-python-setup": "pending",
+      "01.2-dependencies": "pending",
+      "01.3-structure": "pending",
+      "01.4-database": "pending",
+      "01.5-validation": "pending"
+    },
+    "02-core": {
+      "02.1-hamms-base": "pending",
+      "02.2-hamms-dimensions": "pending",
+      "02.3-hamms-validation": "pending",
+      "02.4-llm-base": "pending",
+      "02.5-llm-providers": "pending",
+      "02.6-ui-window": "pending",
+      "02.7-ui-widgets": "pending",
+      "02.8-cli-base": "pending",
+      "02.9-cli-commands": "pending",
+      "02.10-testing": "pending"
+    },
+    "03-features": {
+      "03.1-export-base": "pending",
+      "03.2-export-pdf": "pending",
+      "03.3-batch-engine": "pending",
+      "03.4-batch-queue": "pending",
+      "03.5-search-engine": "pending",
+      "03.6-cache-system": "pending"
+    }
+  },
+  "environment": {
+    "project_root": null,
+    "venv_path": null,
+    "python_version": null,
+    "database_path": null
+  },
+  "tokens": {
+    "used": 0,
+    "budget": 100000,
+    "per_prompt_avg": 0
+  },
+  "validation": {
+    "can_continue": true,
+    "blocking_errors": [],
+    "warnings": []
+  }
+}
