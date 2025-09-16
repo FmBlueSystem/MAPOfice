@@ -504,11 +504,12 @@ class EnhancedMainWindow(QMainWindow):
         controls_layout.addWidget(self.stop_btn)
         
         controls_layout.addStretch()
-        
+
         self.export_btn = QPushButton("Export Results")
         self.export_btn.setEnabled(False)
+        self.export_btn.clicked.connect(self.show_export_dialog)
         controls_layout.addWidget(self.export_btn)
-        
+
         layout.addWidget(controls_group)
         
         # Progress section
@@ -739,7 +740,7 @@ class EnhancedMainWindow(QMainWindow):
         self.browse_btn.clicked.connect(self._browse_directory)
         self.start_btn.clicked.connect(self._start_analysis)
         self.stop_btn.clicked.connect(self._stop_analysis)
-        self.export_btn.clicked.connect(self._export_results)
+        self.export_btn.clicked.connect(self.show_export_dialog)
         
         # Results table
         self.results_table.selectionModel().selectionChanged.connect(self._on_selection_changed)
@@ -1084,25 +1085,163 @@ class EnhancedMainWindow(QMainWindow):
         self.visualize_selected_btn.setEnabled(False)
         self.compare_btn.setEnabled(False)
         
+    def show_export_dialog(self):
+        """Show export dialog with format options"""
+        if not self.current_results:
+            QMessageBox.warning(self, "No Results", "No analysis results to export.")
+            return
+
+        # Create custom export dialog
+        from PyQt6.QtWidgets import QDialog, QRadioButton, QDialogButtonBox, QCheckBox
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Export Results")
+        dialog.setMinimumWidth(400)
+
+        layout = QVBoxLayout(dialog)
+
+        # Format selection
+        format_group = QGroupBox("Export Format")
+        format_layout = QVBoxLayout(format_group)
+
+        self.html_radio = QRadioButton("HTML Report (Professional)")
+        self.html_radio.setChecked(True)
+        format_layout.addWidget(self.html_radio)
+
+        self.csv_radio = QRadioButton("CSV (Excel Compatible)")
+        format_layout.addWidget(self.csv_radio)
+
+        self.json_radio = QRadioButton("JSON (Machine Readable)")
+        format_layout.addWidget(self.json_radio)
+
+        self.all_radio = QRadioButton("All Formats (Multiple Files)")
+        format_layout.addWidget(self.all_radio)
+
+        layout.addWidget(format_group)
+
+        # Template selection
+        template_group = QGroupBox("Report Template")
+        template_layout = QVBoxLayout(template_group)
+
+        self.template_combo = QComboBox()
+        self.template_combo.addItems(["Standard Analysis", "DJ Setlist", "Radio Show", "Library Report"])
+        template_layout.addWidget(self.template_combo)
+
+        layout.addWidget(template_group)
+
+        # Options
+        options_group = QGroupBox("Options")
+        options_layout = QVBoxLayout(options_group)
+
+        self.include_charts = QCheckBox("Include Charts & Visualizations")
+        self.include_charts.setChecked(True)
+        options_layout.addWidget(self.include_charts)
+
+        self.include_hamms = QCheckBox("Include HAMMS Analysis")
+        self.include_hamms.setChecked(True)
+        options_layout.addWidget(self.include_hamms)
+
+        layout.addWidget(options_group)
+
+        # Buttons
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self._export_results()
+
     def _export_results(self):
-        """Export analysis results to CSV"""
+        """Export analysis results in selected format"""
         if not self.current_results:
             return
-            
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export Analysis Results",
-            f"music_analysis_enhanced_{self._get_timestamp()}.csv",
-            "CSV Files (*.csv);;All Files (*)"
-        )
-        
-        if file_path:
-            try:
-                self._export_to_csv(file_path)
-                QMessageBox.information(self, "Export Complete", f"Results exported to:\n{file_path}")
-                self.log_output.append(f"📊 Results exported to: {file_path}")
-            except Exception as e:
-                QMessageBox.critical(self, "Export Error", f"Failed to export results:\n{str(e)}")
+
+        # Import export manager
+        from src.services.export_manager import ExportManager
+        from src.services.export_templates import ExportTemplates
+
+        export_mgr = ExportManager()
+        templates = ExportTemplates()
+
+        # Prepare data for export
+        export_data = []
+        for result in self.current_results:
+            track_data = {
+                'path': result.track_path,
+                'name': result.title or Path(result.track_path).name,
+                'artist': result.artist or 'Unknown',
+                'album': result.album or '',
+                'bpm': result.bpm,
+                'key': result.key,
+                'genre': result.genre,
+                'subgenre': result.subgenre,
+                'mood': result.mood,
+                'era': result.era,
+                'tags': result.tags or [],
+                'energy': getattr(result, 'energy', 0),
+                'hamms': {
+                    'vector': result.hamms_vector,
+                    'confidence': result.hamms_confidence
+                } if hasattr(self, 'include_hamms') and self.include_hamms.isChecked() else None,
+                'ai_confidence': result.ai_confidence,
+                'processing_time': result.processing_time_ms
+            }
+            export_data.append(track_data)
+
+        try:
+            # Export based on selected format
+            if hasattr(self, 'html_radio') and self.html_radio.isChecked():
+                file_path = export_mgr.export_analysis_report(
+                    export_data,
+                    title="MAP4 Music Analysis Report",
+                    format="html"
+                )
+                QMessageBox.information(self, "Export Complete", f"HTML report exported to:\n{file_path}")
+
+            elif hasattr(self, 'csv_radio') and self.csv_radio.isChecked():
+                file_path = export_mgr.export_to_csv(export_data)
+                QMessageBox.information(self, "Export Complete", f"CSV file exported to:\n{file_path}")
+
+            elif hasattr(self, 'json_radio') and self.json_radio.isChecked():
+                export_json = {
+                    'metadata': {
+                        'total_tracks': len(export_data),
+                        'export_date': self._get_timestamp(),
+                        'version': 'MAP4 v2.0'
+                    },
+                    'tracks': export_data
+                }
+                file_path = export_mgr.export_to_json(export_json)
+                QMessageBox.information(self, "Export Complete", f"JSON file exported to:\n{file_path}")
+
+            elif hasattr(self, 'all_radio') and self.all_radio.isChecked():
+                # Export all formats
+                results = export_mgr.batch_export(
+                    [{'name': 'analysis', 'data': export_data}],
+                    formats=['html', 'csv', 'json']
+                )
+
+                paths = []
+                for format, file_paths in results.items():
+                    if file_paths:
+                        paths.append(f"{format.upper()}: {file_paths[0]}")
+
+                QMessageBox.information(
+                    self,
+                    "Batch Export Complete",
+                    f"Files exported:\n" + "\n".join(paths)
+                )
+            else:
+                # Default to CSV if no radio button selected
+                file_path = export_mgr.export_to_csv(export_data)
+                QMessageBox.information(self, "Export Complete", f"CSV file exported to:\n{file_path}")
+
+            self.log_output.append(f"✅ Results exported successfully")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to export results:\n{str(e)}")
+            self.log_output.append(f"❌ Export failed: {str(e)}")
                 
     def _export_to_csv(self, file_path: str):
         """Export results to CSV file"""
