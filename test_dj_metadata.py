@@ -48,10 +48,28 @@ def test_file(file_path: str):
         beatgrid = metadata['beatgrid']
         print("\n🎵 BEATGRID:")
         print(f"  BPM: {beatgrid.bpm if hasattr(beatgrid, 'bpm') else 'N/A'}")
+        print(f"  Time Signature: {beatgrid.time_signature if hasattr(beatgrid, 'time_signature') else '4/4'}")
         print(f"  First Beat: {beatgrid.first_beat_position if hasattr(beatgrid, 'first_beat_position') else 'N/A'}s")
+
+        # Show downbeats (bar starts)
+        if hasattr(beatgrid, 'first_downbeat_position'):
+            print(f"  First Downbeat: {beatgrid.first_downbeat_position}s")
+
+        if hasattr(beatgrid, 'downbeats') and beatgrid.downbeats:
+            print(f"  \n  📍 DOWNBEATS (Bar starts): {len(beatgrid.downbeats)} bars")
+            print(f"  First 8 bars at: {[f'{d:.2f}s' for d in beatgrid.downbeats[:8]]}")
+        elif hasattr(beatgrid, 'beats') and beatgrid.beats:
+            # Calculate downbeats from beats if not explicitly provided
+            calculated_downbeats = [beatgrid.beats[i] for i in range(0, len(beatgrid.beats), 4)]
+            print(f"  \n  📍 DOWNBEATS (Calculated): {len(calculated_downbeats)} bars")
+            print(f"  First 8 bars at: {[f'{d:.2f}s' for d in calculated_downbeats[:8]]}")
+
         if hasattr(beatgrid, 'beats') and beatgrid.beats:
-            print(f"  Total Beats: {len(beatgrid.beats)}")
-            print(f"  First 5 beats: {beatgrid.beats[:5]}")
+            print(f"  \n  Total Beats: {len(beatgrid.beats)}")
+            print(f"  First 8 beats: {[f'{b:.3f}s' for b in beatgrid.beats[:8]]}")
+
+        if hasattr(beatgrid, 'bars_count'):
+            print(f"  Total Bars: {beatgrid.bars_count}")
 
     # Display cue points if present
     if 'cue_points' in metadata:

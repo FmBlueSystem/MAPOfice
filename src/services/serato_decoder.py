@@ -31,10 +31,14 @@ class CuePoint:
 
 @dataclass
 class BeatGrid:
-    """Represents Serato beatgrid data."""
+    """Represents Serato beatgrid data with downbeats."""
     bpm: float
     first_beat_position: float  # Position of first beat in seconds
-    beats: List[float]  # List of beat positions in seconds
+    first_downbeat_position: float = 0  # Position of first downbeat (bar start)
+    beats: List[float] = None  # List of beat positions in seconds
+    downbeats: List[float] = None  # List of downbeat positions (bar starts)
+    bars_count: int = 0  # Number of bars detected
+    time_signature: str = "4/4"  # Time signature (usually 4/4 for electronic)
 
 
 @dataclass
@@ -198,7 +202,8 @@ class SeratoDecoder:
     def decode_serato_beatgrid(data: bytes) -> Optional[BeatGrid]:
         """
         Decode Serato BeatGrid tag.
-        Contains detailed beat position information.
+        Contains detailed beat position information including downbeats.
+        Serato marks downbeats (bar starts) with special markers.
         """
         if not data:
             return None
@@ -218,8 +223,8 @@ class SeratoDecoder:
             if offset + 8 > len(data):
                 return None
 
-            # Number of beats
-            num_beats = struct.unpack('>I', data[offset:offset+4])[0]
+            # Number of markers (beats + downbeats)
+            num_markers = struct.unpack('>I', data[offset:offset+4])[0]
             offset += 4
 
             # BPM (as float)
@@ -227,21 +232,62 @@ class SeratoDecoder:
             offset += 4
 
             beats = []
+            downbeats = []
+            first_downbeat = None
 
-            # Parse beat positions
-            for _ in range(min(num_beats, 10000)):  # Limit to prevent memory issues
-                if offset + 4 > len(data):
+            # Parse beat markers
+            # Serato uses a special format where every 4th beat (in 4/4) is marked as downbeat
+            # The data includes flags for each beat marker
+            beat_counter = 0
+
+            for i in range(min(num_markers, 10000)):  # Limit to prevent memory issues
+                if offset + 5 > len(data):  # 4 bytes position + 1 byte flags
                     break
 
                 beat_position = struct.unpack('>f', data[offset:offset+4])[0]
-                beats.append(beat_position / 1000.0)  # Convert to seconds
+                beat_position_sec = beat_position / 1000.0  # Convert to seconds
                 offset += 4
+
+                # Read beat flags (1 byte)
+                if offset < len(data):
+                    flags = data[offset]
+                    offset += 1
+
+                    # Check if this is a downbeat (bar start)
+                    # Bit 0x01 usually indicates downbeat in Serato
+                    is_downbeat = bool(flags & 0x01)
+
+                    # Alternative: Check beat counter (every 4th beat in 4/4)
+                    if beat_counter % 4 == 0:
+                        is_downbeat = True
+                else:
+                    # Fallback: assume downbeat every 4 beats
+                    is_downbeat = (beat_counter % 4 == 0)
+
+                beats.append(beat_position_sec)
+
+                if is_downbeat:
+                    downbeats.append(beat_position_sec)
+                    if first_downbeat is None:
+                        first_downbeat = beat_position_sec
+
+                beat_counter += 1
+
+            # If no explicit downbeats found, calculate them from beats
+            if not downbeats and beats:
+                # Assume 4/4 time signature, downbeat every 4 beats
+                downbeats = [beats[i] for i in range(0, len(beats), 4)]
+                first_downbeat = downbeats[0] if downbeats else beats[0]
 
             if beats:
                 return BeatGrid(
                     bpm=bpm,
                     first_beat_position=beats[0] if beats else 0,
-                    beats=beats
+                    first_downbeat_position=first_downbeat or beats[0],
+                    beats=beats,
+                    downbeats=downbeats,
+                    bars_count=len(downbeats),
+                    time_signature="4/4"  # Serato typically assumes 4/4
                 )
 
             return None
@@ -416,21 +462,46 @@ class SeratoDecoder:
 
     @staticmethod
     def _parse_beatgrid_entry(data: bytes) -> Optional[BeatGrid]:
-        """Parse beatgrid from markers2."""
+        """Parse beatgrid from markers2 including downbeats."""
         try:
             if len(data) < 8:
                 return None
 
+            offset = 0
+
             # BPM
-            bpm = struct.unpack('>f', data[0:4])[0]
+            bpm = struct.unpack('>f', data[offset:offset+4])[0]
+            offset += 4
 
             # First beat position
-            first_beat = struct.unpack('>f', data[4:8])[0]
+            first_beat = struct.unpack('>f', data[offset:offset+4])[0]
+            offset += 4
+
+            # Check for additional data (downbeat offset)
+            first_downbeat = first_beat  # Default to first beat
+
+            if offset + 4 <= len(data):
+                # Serato sometimes includes downbeat offset
+                downbeat_offset = struct.unpack('>f', data[offset:offset+4])[0]
+                if downbeat_offset > 0:
+                    first_downbeat = downbeat_offset
+                offset += 4
+
+            # Time signature (if present)
+            time_sig = "4/4"
+            if offset + 2 <= len(data):
+                numerator = data[offset]
+                denominator = data[offset + 1]
+                if numerator > 0 and denominator > 0:
+                    time_sig = f"{numerator}/{denominator}"
 
             return BeatGrid(
                 bpm=bpm,
                 first_beat_position=first_beat / 1000.0,
-                beats=[]  # Will be calculated from BPM and first beat
+                first_downbeat_position=first_downbeat / 1000.0,
+                beats=[],  # Will be populated from full beatgrid data
+                downbeats=[],  # Will be populated from full beatgrid data
+                time_signature=time_sig
             )
 
         except Exception as e:

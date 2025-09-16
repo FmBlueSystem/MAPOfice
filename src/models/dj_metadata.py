@@ -117,6 +117,14 @@ class DJBeatGrid:
     def get_bar_at_position(self, position_ms: float) -> Optional[int]:
         """Get the bar number at a given position."""
         if not self.downbeats:
+            # If no explicit downbeats, calculate from beats (4/4 assumed)
+            if self.beats and len(self.beats) >= 4:
+                # Create virtual downbeats every 4 beats
+                virtual_downbeats = [self.beats[i] for i in range(0, len(self.beats), 4)]
+                for i, downbeat in enumerate(virtual_downbeats):
+                    if downbeat > position_ms:
+                        return i - 1 if i > 0 else 0
+                return len(virtual_downbeats) - 1
             return None
 
         for i, downbeat in enumerate(self.downbeats):
@@ -124,6 +132,15 @@ class DJBeatGrid:
                 return i - 1 if i > 0 else 0
 
         return len(self.downbeats) - 1
+
+    def get_phase_at_position(self, position_ms: float) -> Optional[str]:
+        """Get the phase (1-4 in a bar) at a given position."""
+        beat_num = self.get_beat_at_position(position_ms)
+        if beat_num is not None:
+            # In 4/4 time, phase is beat % 4 + 1
+            phase = (beat_num % 4) + 1
+            return f"Phase {phase}/4"
+        return None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
